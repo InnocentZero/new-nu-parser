@@ -42,15 +42,316 @@ pub struct TypeArgsId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PipelineId(pub usize);
 
+// TODO(bumpalo_rewrite): Fill with all the possible BlockEntities
+// NOTE(bumpalo_rewrite): See Parser::block() for the entity types
 #[derive(Debug, Clone)]
-pub struct Block {
-    pub nodes: Vec<NodeId>,
+pub enum BlockEntities<'a> {
+    Def(&'a Def<'a>),
+    Let(&'a Let<'a>),
+    While(&'a While<'a>),
+    For(&'a For<'a>),
+    Loop(&'a Loop<'a>),
+    Return(&'a Return<'a>),
+    Continue(&'a Continue),
+    Break(&'a Break),
+    Alias(&'a Alias),
+    Extern(&'a Extern),
+    PipelineOrExprOrAssign(PipelineOrExprOrAssign<'a>),
+    Statement(PipelineOrExprOrAssign<'a>),
 }
 
-impl Block {
-    pub fn new(nodes: Vec<NodeId>) -> Block {
-        Block { nodes }
+// NOTE(bumpalo_rewrite): This becomes the root of the AST
+// TODO(bumpalo_rewrite): Change to the generic enum that block may contain
+#[derive(Debug, Clone)]
+pub struct Block<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub nodes: Vec<BlockEntities<'a>>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+// TODO(bumpalo_rewrite): Finally uncomment this
+#[derive(Debug, Clone)]
+pub struct Def<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Replace with a VarDecl type
+    pub name: NodeId,
+    // TODO(bumpalo_rewrite): Replace with a TypeParams type
+    pub type_params: Option<NodeId>,
+    // TODO(bumpalo_rewrite): Replace with a Params type
+    pub params: NodeId,
+    // TODO(bumpalo_rewrite): Replace with an InOutType type
+    pub in_out_types: Option<NodeId>,
+    pub block: &'a Block<'a>,
+    pub env: bool,
+    pub wrapped: bool,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+// TODO(bumpalo_rewrite): Finally uncomment this
+#[derive(Debug, Clone)]
+pub struct Let<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Replace with a VarDecl type
+    pub variable_name: NodeId,
+    // TODO(bumpalo_rewrite): Replace with a Type type
+    pub ty: Option<NodeId>,
+    pub initializer: PipelineOrExprOrAssign<'a>,
+    pub is_mutable: bool,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+// TODO(bumpalo_rewrite): Finally uncomment this
+#[derive(Debug, Clone)]
+pub struct While<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub condition: &'a ExprVariants<'a>,
+    pub block: &'a Block<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+// TODO(bumpalo_rewrite): Finally uncomment this
+#[derive(Debug, Clone)]
+pub struct For<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Replace with an VarDecl type
+    pub variable: NodeId,
+    pub range: ExprVariants<'a>,
+    pub block: &'a Block<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Loop<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub block: &'a Block<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Return<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub ret_val: Option<&'a ExprVariants<'a>>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Continue {
+    pub span_start: usize,
+    pub span_end: usize,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Break {
+    pub span_start: usize,
+    pub span_end: usize,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Alias {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Change to VarDecl type
+    pub new_name: NodeId,
+    // TODO(bumpalo_rewrite): Change to VarRef type
+    pub old_name: NodeId,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Extern {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Change to VarDecl type
+    pub name: NodeId,
+    // TODO(bumpalo_rewrite): Change to Params type
+    pub params: NodeId,
+}
+
+// Pipeline just contains a list of expressions
+//
+// It's not allowed if there is only one element in pipeline, in that
+// case, it's just an expression.
+//
+// Making such restriction can reduce indirect access on expression, which
+// can improve performance in parse time.
+#[derive(Debug, Clone)]
+pub struct Pipeline<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Change to Vec of whatever
+    pub nodes: Vec<&'a ExprVariants<'a>>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+// TODO(bumpalo_rewrite): This needs an enum inside it
+// NOTE(bumpalo_rewrite): Possibly call it ExprVariants
+// HACK(bumpalo_rewrite): Is this indirection needed??
+pub struct Expr<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): This will be the ExprVariants defined below
+    pub expression: ExprVariants<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+// NOTE(bumpalo_rewrite): This type and the Expr type both NEED to have the same type of
+// the field 'expression'
+#[derive(Debug, Clone)]
+pub struct Assignment<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): This will be the ExprVariants defined below
+    pub expression: ExprVariants<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub enum PipelineOrExprOrAssign<'a> {
+    Pipeline(&'a Pipeline<'a>),
+    Expression(&'a ExprVariants<'a>),
+    Assignment(&'a Assignment<'a>),
+}
+
+impl<'a> PipelineOrExprOrAssign<'a> {
+    fn get_span_end(&self) -> usize {
+        match self {
+            PipelineOrExprOrAssign::Pipeline(pipeline) => pipeline.span_end,
+            PipelineOrExprOrAssign::Expression(expr) => expr.get_span_end(),
+            PipelineOrExprOrAssign::Assignment(assignment) => assignment.span_end,
+        }
     }
+}
+
+// TODO(bumpalo_rewrite): Write an impl for getting span_end
+#[derive(Debug, Clone)]
+pub enum ExprVariants<'a> {
+    Record(&'a Record<'a>),
+    Closure(&'a Closure<'a>),
+    If(&'a If<'a>),
+    Match(&'a Match<'a>),
+    Try(&'a Try<'a>),
+    BinaryOp(&'a BinaryOp<'a>),
+    List(&'a List),
+
+    // TODO(bumpalo_rewrite): Should I keep
+    // TODO(bumpalo_rewrite): Change to raw span struct and possibly use it everywhere
+    // TODO(bumpalo_rewrite): There's already a Span struct, use that
+    Garbage(usize, usize),
+}
+
+impl<'a> ExprVariants<'a> {
+    fn get_span_start(&self) -> usize {
+        match self {
+            Self::Record(record) => record.span_start,
+            Self::Closure(closure) => closure.span_start,
+            Self::If(if_) => if_.span_end,
+            Self::Match(match_) => match_.span_start,
+            Self::Try(try_) => try_.span_start,
+            Self::Garbage(span_start, _) => *span_start,
+            Self::BinaryOp(binary_op) => binary_op.span_start,
+            Self::List(list) => list.span_start,
+        }
+    }
+
+    fn get_span_end(&self) -> usize {
+        match self {
+            Self::Record(record) => record.span_end,
+            Self::Closure(closure) => closure.span_end,
+            Self::If(if_) => if_.span_end,
+            Self::Match(match_) => match_.span_end,
+            Self::Try(try_) => try_.span_end,
+            Self::Garbage(_, span_end) => *span_end,
+            Self::BinaryOp(binary_op) => binary_op.span_end,
+            Self::List(list) => list.span_end,
+        }
+    }
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Record<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Is this supposed to be like this, or more?
+    pub pairs: Vec<(ExprVariants<'a>, ExprVariants<'a>)>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Closure<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Type this well
+    pub params: Option<NodeId>,
+    pub block: &'a Block<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct If<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub condition: &'a ExprVariants<'a>,
+    pub then_block: &'a Block<'a>,
+    pub else_block: Option<&'a Block<'a>>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Match<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub target: ExprVariants<'a>,
+    pub match_arms: Vec<(ExprVariants<'a>, ExprVariants<'a>)>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct Try<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    pub try_block: &'a Block<'a>,
+    pub catch_block: Option<&'a Block<'a>>,
+    pub finally_block: Option<&'a Block<'a>>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct BinaryOp<'a> {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Make it references instead??
+    // NOTE(bumpalo_rewrite): Too much indirection imho
+    pub lhs: ExprVariants<'a>,
+    // TODO(bumpalo_rewrite): Make it a separate enum
+    pub op: NodeId,
+    pub rhs: PipelineOrExprOrAssign<'a>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub struct List {
+    pub span_start: usize,
+    pub span_end: usize,
+    // TODO(bumpalo_rewrite): Figure out what type to place here
+    pub items: Vec<NodeId>,
+}
+
+// HACK(bumpalo_rewrite): not everything has to be pub
+#[derive(Debug, Clone)]
+pub enum AssignOrExpr<'a> {
+    Expression(&'a ExprVariants<'a>),
+    Assignment(&'a Assignment<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,16 +387,16 @@ impl Call {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct List {
-    pub items: Vec<NodeId>,
-}
+// #[derive(Debug, Clone, PartialEq)]
+// pub struct List {
+//     pub items: Vec<NodeId>,
+// }
 
-impl List {
-    pub fn new(items: Vec<NodeId>) -> Self {
-        Self { items }
-    }
-}
+// impl List {
+//     pub fn new(items: Vec<NodeId>) -> Self {
+//         Self { items }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Table {
@@ -109,28 +410,17 @@ impl Table {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Record {
-    pub pairs: Vec<(NodeId, NodeId)>,
-}
+// impl Record {
+//     pub fn new(pairs: Vec<(NodeId, NodeId)>) -> Self {
+//         Self { pairs }
+//     }
+// }
 
-impl Record {
-    pub fn new(pairs: Vec<(NodeId, NodeId)>) -> Self {
-        Self { pairs }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Match {
-    pub target: NodeId,
-    pub match_arms: Vec<(NodeId, NodeId)>,
-}
-
-impl Match {
-    pub fn new(target: NodeId, match_arms: Vec<(NodeId, NodeId)>) -> Self {
-        Self { target, match_arms }
-    }
-}
+// impl Match {
+//     pub fn new(target: NodeId, match_arms: Vec<(NodeId, NodeId)>) -> Self {
+//         Self { target, match_arms }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeArgs {
@@ -140,32 +430,6 @@ pub struct TypeArgs {
 impl TypeArgs {
     pub fn new(args: Vec<NodeId>) -> Self {
         Self { args }
-    }
-}
-
-// Pipeline just contains a list of expressions
-//
-// It's not allowed if there is only one element in pipeline, in that
-// case, it's just an expression.
-//
-// Making such restriction can reduce indirect access on expression, which
-// can improve performance in parse time.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Pipeline {
-    pub nodes: Vec<NodeId>,
-}
-
-impl Pipeline {
-    pub fn new(nodes: Vec<NodeId>) -> Self {
-        debug_assert!(
-            nodes.len() > 1,
-            "a pipeline must contain at least 2 nodes, or else it's actually an expression"
-        );
-        Self { nodes }
-    }
-
-    pub fn get_expressions(&self) -> &Vec<NodeId> {
-        &self.nodes
     }
 }
 
@@ -197,18 +461,18 @@ pub enum BarewordContext {
     Call,
 }
 
-enum AssignmentOrExpression {
-    Assignment(NodeId),
-    Expression(NodeId),
-}
+// enum AssignmentOrExpression {
+//     Assignment(NodeId),
+//     Expression(NodeId),
+// }
 
-impl AssignmentOrExpression {
-    fn get_node_id(&self) -> NodeId {
-        match self {
-            AssignmentOrExpression::Assignment(i) | AssignmentOrExpression::Expression(i) => *i,
-        }
-    }
-}
+// impl AssignmentOrExpression {
+//     fn get_node_id(&self) -> NodeId {
+//         match self {
+//             AssignmentOrExpression::Assignment(i) | AssignmentOrExpression::Expression(i) => *i,
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum AstNode {
@@ -407,23 +671,30 @@ impl Parser {
         self.tokens.peek_span().start
     }
 
-    fn get_span_end(&self, node_id: NodeId) -> usize {
-        self.compiler.spans[node_id.0].end
-    }
+    // fn get_span_end(&self, node_id: NodeId) -> usize {
+    //     self.compiler.spans[node_id.0].end
+    // }
 
-    pub fn parse(mut self) -> Compiler {
+    pub fn parse<'a>(mut self, arena: &'a bumpalo::Bump) -> &'a Block<'a> {
         let _span = span!();
-        self.block(BlockContext::Bare);
-
-        self.compiler
+        // TODO(bumpalo_rewrite): Figure out the lifetime issue
+        self.block(BlockContext::Bare, arena)
     }
 
-    pub fn expression(&mut self) -> NodeId {
+    pub fn expression<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a ExprVariants<'a> {
         let _span = span!();
-        self.math_expression(false).get_node_id()
+        match self.math_expression(false, arena) {
+            AssignOrExpr::Expression(expr) => expr,
+            AssignOrExpr::Assignment(assignment) => &assignment.expression,
+        }
     }
 
-    fn pipeline(&mut self, first_element: NodeId, span_start: usize) -> NodeId {
+    fn pipeline<'a>(
+        &mut self,
+        first_element: &'a ExprVariants<'a>,
+        span_start: usize,
+        arena: &'a bumpalo::Bump,
+    ) -> &'a Pipeline<'a> {
         let mut expressions = vec![first_element];
         while self.is_pipe() {
             self.pipe();
@@ -431,65 +702,86 @@ impl Parser {
             if self.is_newline() {
                 self.tokens.advance()
             }
-            expressions.push(self.expression());
+            expressions.push(self.expression(arena));
         }
-        self.compiler.pipelines.push(Pipeline::new(expressions));
         let span_end = self.position();
-        self.create_node(
-            AstNode::Pipeline(PipelineId(self.compiler.pipelines.len() - 1)),
+        arena.alloc(Pipeline {
             span_start,
             span_end,
-        )
+            nodes: expressions,
+        })
     }
-    pub fn pipeline_or_expression_or_assignment(&mut self) -> NodeId {
+    pub fn pipeline_or_expression_or_assignment<'a>(
+        &mut self,
+        arena: &'a bumpalo::Bump,
+    ) -> PipelineOrExprOrAssign<'a> {
         // get the first expression
         let _span = span!();
         let span_start = self.position();
-        let first = self.math_expression(true);
-        let first_id = first.get_node_id();
-        if let AssignmentOrExpression::Assignment(_) = &first {
-            return first_id;
+        let first = self.math_expression(true, arena);
+
+        match first {
+            AssignOrExpr::Assignment(assignment) => PipelineOrExprOrAssign::Assignment(assignment),
+            AssignOrExpr::Expression(expr) if !self.is_pipe() => {
+                PipelineOrExprOrAssign::Expression(expr)
+            }
+            AssignOrExpr::Expression(expr) => {
+                PipelineOrExprOrAssign::Pipeline(self.pipeline(expr, span_start, arena))
+            }
         }
-        // pipeline with one element is an expression actually
-        if !self.is_pipe() {
-            return first_id;
-        }
-        self.pipeline(first_id, span_start)
     }
 
-    pub fn pipeline_or_expression(&mut self) -> NodeId {
+    // TODO(bumpalo_rewrite): Make a PipelineOrExpression enum and add it there
+    pub fn pipeline_or_expression<'a>(
+        &mut self,
+        arena: &'a bumpalo::Bump,
+    ) -> PipelineOrExprOrAssign<'a> {
         let _span = span!();
         let span_start = self.position();
-        let first_id = self.expression();
+        let first = self.expression(arena);
         // pipeline with one element is an expression actually.
         if !self.is_pipe() {
-            return first_id;
+            return PipelineOrExprOrAssign::Expression(first);
         }
-        self.pipeline(first_id, span_start)
+        PipelineOrExprOrAssign::Pipeline(self.pipeline(first, span_start, arena))
     }
 
-    fn math_expression(&mut self, allow_assignment: bool) -> AssignmentOrExpression {
+    fn math_expression<'a>(
+        &mut self,
+        allow_assignment: bool,
+        arena: &'a bumpalo::Bump,
+    ) -> AssignOrExpr<'a> {
         let _span = span!();
-        let mut expr_stack = Vec::<(NodeId, NodeId)>::new();
+        // TODO(bumpalo_rewrite): The left expression in the tuple is supposed to be the op
+        let mut expr_stack = Vec::<(NodeId, ExprVariants<'a>)>::new();
 
         let mut last_prec = 1000000;
 
         let span_start = self.position();
 
         // Check for special forms
-        if self.is_keyword(b"if") {
-            return AssignmentOrExpression::Expression(self.if_expression());
+        let expression = if self.is_keyword(b"if") {
+            let if_ = self.if_expression(arena);
+            Some(arena.alloc(ExprVariants::If(if_)))
         } else if self.is_keyword(b"match") {
-            return AssignmentOrExpression::Expression(self.match_expression());
+            let match_ = self.match_expression(arena);
+            Some(arena.alloc(ExprVariants::Match(match_)))
         } else if self.is_keyword(b"try") {
-            return AssignmentOrExpression::Expression(self.try_expression());
+            let try_ = self.try_expression(arena);
+            Some(arena.alloc(ExprVariants::Try(try_)))
+        } else {
+            None
+        };
+
+        if let Some(expression) = expression {
+            return AssignOrExpr::Expression(expression);
         }
         // TODO
         // } else if self.is_keyword(b"where") {
         // }
 
         // Otherwise assume a math expression
-        let mut leftmost = self.simple_expression(BarewordContext::Call);
+        let mut leftmost = self.simple_expression(BarewordContext::Call, arena);
 
         if self.is_equals() {
             if !allow_assignment {
@@ -497,18 +789,21 @@ impl Parser {
             }
             let op = self.operator();
 
-            let rhs = self.pipeline_or_expression();
-            let span_end = self.get_span_end(rhs);
+            let rhs = self.pipeline_or_expression(arena);
+            let span_end = rhs.get_span_end();
 
-            return AssignmentOrExpression::Assignment(self.create_node(
-                AstNode::BinaryOp {
-                    lhs: leftmost,
-                    op,
-                    rhs,
-                },
+            let expression = arena.alloc(BinaryOp {
                 span_start,
                 span_end,
-            ));
+                lhs: leftmost,
+                op,
+                rhs,
+            });
+            return AssignOrExpr::Assignment(arena.alloc(Assignment {
+                span_start,
+                span_end,
+                expression: ExprVariants::BinaryOp(expression),
+            }));
         }
 
         while self.has_tokens() {
@@ -532,9 +827,11 @@ impl Parser {
                 }
 
                 let rhs = if self.is_simple_expression() {
-                    self.simple_expression(BarewordContext::Call)
+                    self.simple_expression(BarewordContext::Call, arena)
                 } else {
-                    self.error("incomplete math expression")
+                    self.error("incomplete math expression");
+                    // TODO(bumpalo_rewrite): Ugh, span_end
+                    ExprVariants::Garbage(span_start, self.tokens.peek().1.end)
                 };
 
                 while op_prec <= last_prec {
@@ -551,12 +848,16 @@ impl Parser {
 
                     let lhs = expr_stack.last_mut().map_or(&mut leftmost, |l| &mut l.1);
 
-                    let (span_start, span_end) = self.spanning(*lhs, rhs);
-                    *lhs = self.create_node(
-                        AstNode::BinaryOp { lhs: *lhs, op, rhs },
+                    let (span_start, span_end) = (lhs.get_span_start(), rhs.get_span_end());
+                    let binary_op = arena.alloc(BinaryOp {
                         span_start,
                         span_end,
-                    );
+                        // TODO(bumpalo_rewrite): Ugh
+                        lhs: lhs.clone(),
+                        op,
+                        rhs: PipelineOrExprOrAssign::Expression(arena.alloc(rhs)),
+                    });
+                    *lhs = ExprVariants::BinaryOp(binary_op);
                 }
 
                 expr_stack.push((op, rhs));
@@ -570,19 +871,27 @@ impl Parser {
         while let Some((op, rhs)) = expr_stack.pop() {
             let lhs = expr_stack.last_mut().map_or(&mut leftmost, |l| &mut l.1);
 
-            let (span_start, span_end) = self.spanning(*lhs, rhs);
+            let (span_start, span_end) = (lhs.get_span_start(), rhs.get_span_end());
 
-            *lhs = self.create_node(
-                AstNode::BinaryOp { lhs: *lhs, op, rhs },
+            let binary_op = arena.alloc(BinaryOp {
                 span_start,
                 span_end,
-            );
+                // TODO(bumpalo_rewrite): Ugh..
+                lhs: lhs.clone(),
+                op,
+                rhs: PipelineOrExprOrAssign::Expression(arena.alloc(rhs)),
+            });
+            *lhs = ExprVariants::BinaryOp(binary_op);
         }
 
-        AssignmentOrExpression::Expression(leftmost)
+        AssignOrExpr::Expression(arena.alloc(leftmost))
     }
 
-    pub fn simple_expression(&mut self, bareword_context: BarewordContext) -> NodeId {
+    pub fn simple_expression<'a>(
+        &mut self,
+        bareword_context: BarewordContext,
+        arena: &'a bumpalo::Bump,
+    ) -> ExprVariants<'a> {
         let _span = span!();
 
         // skip comments and newlines
@@ -595,18 +904,22 @@ impl Parser {
         let (token, span) = self.tokens.peek();
 
         let mut expr = match token {
-            Token::LCurly => self.record_or_closure(),
+            Token::LCurly => self.record_or_closure(arena),
             Token::LParen => {
                 self.tokens.advance();
                 if self.tokens.peek_token() == Token::RParen {
-                    self.error("use null instead of ()")
+                    self.error("use null instead of ()");
+                    // TODO(bumpalo_rewrite): Is it supposed to be span_start + 1 or span_start + 2??
+                    ExprVariants::Garbage(span_start, span_start + 1)
                 } else {
-                    let output = self.expression();
+                    let output = self.expression(arena);
                     self.rparen();
-                    output
+                    // TODO(bumpalo_rewrite): Ugh
+                    output.clone()
                 }
             }
-            Token::LSquare => self.list_or_table(),
+            // TODO(bumpalo_rewrite): Fix this function, RESUME FROM HERE AFTER THIS FUNCTION CALL IS FIXED!!!
+            Token::LSquare => self.list_or_table(arena),
             Token::Int => self.advance_node(AstNode::Int, span),
             Token::Float => self.advance_node(AstNode::Float, span),
             Token::DoubleQuotedString => self.advance_node(AstNode::String, span),
@@ -642,8 +955,8 @@ impl Parser {
                     self.error("incomplete range");
                     return expr;
                 } else {
-                    let rhs = self.simple_expression(BarewordContext::String);
-                    let span_end = self.get_span_end(rhs);
+                    let rhs = self.simple_expression(BarewordContext::String, arena);
+                    let span_end = rhs.get_span_end();
 
                     expr =
                         self.create_node(AstNode::Range { lhs: expr, rhs }, span_start, span_end);
@@ -708,6 +1021,7 @@ impl Parser {
         }
     }
 
+    // TODO(bumpalo_rewrite): Make this a VarDecl type
     pub fn variable_decl(&mut self) -> NodeId {
         let _span = span!();
 
@@ -725,7 +1039,7 @@ impl Parser {
         }
     }
 
-    pub fn call(&mut self) -> NodeId {
+    pub fn call<'a>(&mut self, arena: &'a bumpalo::Bump) -> NodeId {
         let _span = span!();
         let mut parts = vec![self.call_name()];
         let mut is_head = true;
@@ -744,7 +1058,7 @@ impl Parser {
             // TODO: Add flags
 
             is_head = false;
-            let arg_id = self.simple_expression(BarewordContext::String);
+            let arg_id = self.simple_expression(BarewordContext::String, arena);
             parts.push(arg_id);
         }
 
@@ -758,7 +1072,9 @@ impl Parser {
         )
     }
 
-    pub fn list_or_table(&mut self) -> NodeId {
+    // TODO(bumpalo_rewrite): RESUME FROM HERE!!!!!!!!
+    // TODO(bumpalo_rewrite): Add the variant to ExprVariants first
+    pub fn list_or_table<'a>(&mut self, arena: &'a bumpalo::Bump) -> ExprVariants<'a> {
         let _span = span!();
         let span_start = self.position();
         let mut is_table = false;
@@ -778,15 +1094,23 @@ impl Parser {
             } else if self.is_semicolon() {
                 if items.len() != 1 {
                     self.error("semicolon to create table should immediately follow headers");
-                } else if !matches!(self.compiler.get_node(items[0]), AstNode::List(_)) {
-                    self.error_on_node("tables require a list for their headers", items[0])
+                    let span_end = self.tokens.peek_span().end;
+                    return ExprVariants::Garbage(span_start, span_end);
+                } else if
+                // TODO(bumpalo_rewrite): Fix this check please, once the appropriate variants are defined
+                // in the enum
+                !matches!(items[0], ExprVariants::List(_)) {
+                    self.error("tables require a list for their headers");
+                    let span_end = self.tokens.peek_span().end;
+                    return ExprVariants::Garbage(span_start, span_end);
                 }
                 self.tokens.advance();
                 is_table = true;
             } else if self.is_simple_expression() {
-                items.push(self.simple_expression(BarewordContext::String));
+                items.push(self.simple_expression(BarewordContext::String, arena));
             } else {
-                items.push(self.error("expected list item"));
+                self.error("expected list item");
+                items.push(ExprVariants::Garbage(span_start, span_end));
                 if self.is_eof() {
                     // prevent forever looping if there is no token to put the error on
                     break;
@@ -812,7 +1136,7 @@ impl Parser {
         }
     }
 
-    pub fn record_or_closure(&mut self) -> NodeId {
+    pub fn record_or_closure<'a>(&mut self, arena: &'a bumpalo::Bump) -> ExprVariants<'a> {
         let _span = span!();
         let span_start = self.position();
         let mut span_end = self.position(); // TODO: make sure we only initialize it expectedly
@@ -827,12 +1151,19 @@ impl Parser {
 
         // Explicit closure case
         if self.is_pipe() {
+            // TODO(bumpalo_rewrite): Fix the params type
             let params = Some(self.signature_params(ParamsContext::Pipes));
-            let block = self.block(BlockContext::Closure);
+            let block = self.block(BlockContext::Closure, arena);
             self.rcurly();
             span_end = self.position();
 
-            return self.create_node(AstNode::Closure { params, block }, span_start, span_end);
+            let closure = arena.alloc(Closure {
+                span_start,
+                span_end,
+                params,
+                block,
+            });
+            return ExprVariants::Closure(closure);
         }
 
         let rollback_point = self.get_rollback_point();
@@ -843,7 +1174,7 @@ impl Parser {
                 span_end = self.position();
                 break;
             }
-            let key = self.simple_expression(BarewordContext::String);
+            let key = self.simple_expression(BarewordContext::String, arena);
             self.skip_newlines();
             if first_pass && !self.is_colon() {
                 is_closure = true;
@@ -851,7 +1182,7 @@ impl Parser {
             }
             self.colon();
             self.skip_newlines();
-            let val = self.simple_expression(BarewordContext::String);
+            let val = self.simple_expression(BarewordContext::String, arena);
             items.push((key, val));
             first_pass = false;
 
@@ -866,29 +1197,29 @@ impl Parser {
 
         if is_closure {
             self.apply_rollback(rollback_point);
-            let block = self.block(BlockContext::Closure);
+            let block = self.block(BlockContext::Closure, arena);
             self.rcurly();
 
             span_end = self.position();
 
-            self.create_node(
-                AstNode::Closure {
-                    params: None,
-                    block,
-                },
+            let closure = arena.alloc(Closure {
                 span_start,
                 span_end,
-            )
+                params: None,
+                block,
+            });
+            ExprVariants::Closure(closure)
         } else {
-            self.compiler.records.push(Record::new(items));
-            self.create_node(
-                AstNode::Record(RecordId(self.compiler.records.len() - 1)),
+            let record = arena.alloc(Record {
                 span_start,
                 span_end,
-            )
+                pairs: items,
+            });
+            ExprVariants::Record(record)
         }
     }
 
+    // TODO(bumpalo_rewrite): make a separate enum and use that
     pub fn operator(&mut self) -> NodeId {
         let (token, span) = self.tokens.peek();
 
@@ -929,6 +1260,7 @@ impl Parser {
         }
     }
 
+    // TODO(bumpalo_rewrite): Change to use Operators enum and use that for precedence specifically
     pub fn operator_precedence(&mut self, operator: NodeId) -> usize {
         self.compiler.get_node(operator).precedence()
     }
@@ -982,18 +1314,26 @@ impl Parser {
         self.tokens.peek_token() != Token::Eof
     }
 
-    pub fn match_expression(&mut self) -> NodeId {
+    // TODO(bumpalo_rewrite): Add parametric lifetime when needed
+    pub fn match_expression<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Match<'a> {
         let _span = span!();
         let span_start = self.position();
-        let span_end;
 
         self.keyword(b"match");
-        let target = self.simple_expression(BarewordContext::String);
+
+        let target = self.simple_expression(BarewordContext::String, arena);
+        let mut span_end = target.get_span_end().unwrap_or(span_start + b"match".len());
 
         let mut match_arms = vec![];
 
         if !self.is_lcurly() {
-            return self.error("expected left curly brace '{'");
+            self.error("expected left curly brace '{'");
+            return arena.alloc(Match {
+                span_start,
+                span_end,
+                target,
+                match_arms: vec![],
+            });
         }
 
         self.lcurly();
@@ -1004,14 +1344,22 @@ impl Parser {
                 self.rcurly();
                 break;
             } else if self.is_simple_expression() {
-                let pattern = self.simple_expression(BarewordContext::String);
+                let pattern = self.simple_expression(BarewordContext::String, arena);
+                let span_end = pattern.get_span_end().unwrap_or(span_end);
 
                 if !self.is_thick_arrow() {
-                    return self.error("expected thick arrow (=>) between match cases");
+                    self.error("expected thick arrow (=>) between match cases");
+
+                    return arena.alloc(Match {
+                        span_start,
+                        span_end,
+                        target,
+                        match_arms: vec![],
+                    });
                 }
                 self.tokens.advance();
 
-                let pattern_result = self.simple_expression(BarewordContext::String);
+                let pattern_result = self.simple_expression(BarewordContext::String, arena);
 
                 if self.is_comma() {
                     self.tokens.advance();
@@ -1021,68 +1369,95 @@ impl Parser {
             } else if self.is_newline() {
                 self.tokens.advance();
             } else {
-                return self.error("expected match arm in match");
+                self.error("expected match arm in match");
+
+                return arena.alloc(Match {
+                    span_start,
+                    span_end,
+                    target,
+                    match_arms: vec![],
+                });
             }
         }
 
-        self.compiler.matches.push(Match::new(target, match_arms));
-        self.create_node(
-            AstNode::Match(MatchId(self.compiler.matches.len() - 1)),
+        arena.alloc(Match {
             span_start,
             span_end,
-        )
+            target,
+            match_arms,
+        })
     }
 
-    pub fn if_expression(&mut self) -> NodeId {
+    // TODO(bumpalo_rewrite): Do not use Option type here
+    pub fn if_expression<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a If<'a> {
         let _span = span!();
         let span_start = self.position();
         let span_end;
 
         self.keyword(b"if");
 
-        let condition = self.expression();
+        let condition = self.expression(arena);
         self.skip_newlines();
 
-        let then_block = self.block(BlockContext::Curlies);
+        let then_block = self.block(BlockContext::Curlies, arena);
         self.skip_newlines();
 
-        let else_block = if self.is_keyword(b"else") {
+        let else_block: Option<&'_ Block<'_>> = if self.is_keyword(b"else") {
             self.tokens.advance();
             self.skip_newlines();
 
             let block = if self.is_keyword(b"if") {
-                self.if_expression()
+                let if_ = self.if_expression(arena);
+                let inner_span_start = if_.span_start;
+                let inner_span_end = if_.span_end;
+                let if_expr = arena.alloc(ExprVariants::If(if_));
+
+                let expr = PipelineOrExprOrAssign::Expression(if_expr);
+                arena.alloc(Block {
+                    span_start: inner_span_start,
+                    span_end: inner_span_end,
+                    nodes: vec![BlockEntities::PipelineOrExprOrAssign(expr)],
+                })
             } else if self.is_keyword(b"match") {
-                self.match_expression()
+                let match_ = self.match_expression(arena);
+                let inner_span_start = match_.span_start;
+                let inner_span_end = match_.span_end;
+                let match_expr = arena.alloc(ExprVariants::Match(match_));
+
+                let expr = PipelineOrExprOrAssign::Expression(match_expr);
+                arena.alloc(Block {
+                    span_start: inner_span_start,
+                    span_end: inner_span_end,
+                    nodes: vec![BlockEntities::PipelineOrExprOrAssign(expr)],
+                })
             } else {
-                self.block(BlockContext::Curlies)
+                self.block(BlockContext::Curlies, arena)
             };
-            span_end = self.get_span_end(block);
+
+            span_end = block.span_end;
             Some(block)
         } else {
-            span_end = self.get_span_end(then_block);
+            span_end = then_block.span_end;
             None
         };
 
-        self.create_node(
-            AstNode::If {
-                condition,
-                then_block,
-                else_block,
-            },
+        arena.alloc(If {
             span_start,
             span_end,
-        )
+            condition,
+            then_block,
+            else_block,
+        })
     }
 
-    pub fn try_expression(&mut self) -> NodeId {
+    pub fn try_expression<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Try<'a> {
         let _span = span!();
         let span_start = self.position();
 
         self.keyword(b"try");
 
-        let try_block = self.block(BlockContext::Curlies);
-        let mut span_end = self.get_span_end(try_block);
+        let try_block = self.block(BlockContext::Curlies, arena);
+        let mut span_end = try_block.span_end;
         self.skip_newlines();
 
         // catch
@@ -1090,8 +1465,8 @@ impl Parser {
             self.tokens.advance();
             self.skip_newlines();
 
-            let block = self.block(BlockContext::Curlies);
-            span_end = self.get_span_end(block);
+            let block = self.block(BlockContext::Curlies, arena);
+            span_end = block.span_end;
 
             Some(block)
         } else {
@@ -1103,22 +1478,20 @@ impl Parser {
             self.tokens.advance();
             self.skip_newlines();
 
-            let block = self.block(BlockContext::Curlies);
-            span_end = self.get_span_end(block);
+            let block = self.block(BlockContext::Curlies, arena);
+            span_end = block.span_end;
             Some(block)
         } else {
             None
         };
 
-        self.create_node(
-            AstNode::Try {
-                try_block,
-                catch_block,
-                finally_block,
-            },
+        arena.alloc(Try {
             span_start,
             span_end,
-        )
+            try_block,
+            catch_block,
+            finally_block,
+        })
     }
 
     // directly ripped from `type_params` just changed delimiters
@@ -1377,7 +1750,7 @@ impl Parser {
         }
     }
 
-    pub fn def_statement(&mut self) -> NodeId {
+    pub fn def_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> Option<&'a Def<'a>> {
         let _span = span!();
         let span_start = self.position();
 
@@ -1394,36 +1767,43 @@ impl Parser {
                     let flag_name = self.compiler.get_span_contents_manual(span.start, span.end);
                     if flag_name == b"env" {
                         if has_env_flag {
-                            return self.error("duplicated --env flag");
+                            // TODO(bumpalo_rewrite): Figure out how to deal with the errors
+                            self.error("duplicated --env flag");
+                            return None;
                         }
                         has_env_flag = true;
                     } else if flag_name == b"wrapped" {
                         if has_wrapped_flag {
-                            return self.error("duplicated --wrapped flag");
+                            self.error("duplicated --wrapped flag");
+                            return None;
                         }
                         has_wrapped_flag = true
                     } else {
-                        return self.error("expect --env or --wrapped");
+                        self.error("expect --env or --wrapped");
+                        return None;
                     }
                     self.tokens.advance();
                 }
-                _ => return self.error("incomplete flag name"),
+                _ => {
+                    self.error("incomplete flag name");
+                    return None;
+                }
             }
         }
 
         let name = match self.tokens.peek() {
             (Token::Bareword, span) => self.advance_node(AstNode::Name, span),
             (Token::DoubleQuotedString | Token::SingleQuotedString, span) => {
+                // TODO(bumpalo_rewrite): Create a specific VarDecl node
                 self.advance_node(AstNode::String, span)
             }
-            _ => return self.error("expected def name"),
+            _ => {
+                self.error("expected def name");
+                return None;
+            }
         };
 
-        let type_params = if self.is_less_than() {
-            Some(self.type_params())
-        } else {
-            None
-        };
+        let type_params = self.is_less_than().then(|| self.type_params());
 
         let params = self.signature_params(ParamsContext::Squares);
         let in_out_types = if self.is_colon() {
@@ -1431,84 +1811,93 @@ impl Parser {
         } else {
             None
         };
-        let block = self.block(BlockContext::Curlies);
+        let block = self.block(BlockContext::Curlies, arena);
 
-        let span_end = self.get_span_end(block);
+        let span_end = block.span_end;
 
-        self.create_node(
-            AstNode::Def {
-                name,
-                type_params,
-                params,
-                in_out_types,
-                block,
-                env: has_env_flag,
-                wrapped: has_wrapped_flag,
-            },
+        let def = arena.alloc(Def {
             span_start,
             span_end,
-        )
+            name,
+            type_params,
+            params,
+            in_out_types,
+            block,
+            env: has_env_flag,
+            wrapped: has_wrapped_flag,
+        });
+
+        Some(def)
     }
 
-    pub fn extern_statement(&mut self) -> NodeId {
+    pub fn extern_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> Option<&'a Extern> {
         let _span = span!();
         let span_start = self.position();
 
         self.keyword(b"extern");
 
+        // TODO(bumpalo_rewrite): Do it in VarDecl scope
         let name = match self.tokens.peek() {
             (Token::Bareword, span) => self.advance_node(AstNode::Name, span),
             (Token::DoubleQuotedString | Token::SingleQuotedString, span) => {
                 self.advance_node(AstNode::String, span)
             }
-            _ => return self.error("expected def name"),
+            _ => {
+                self.error("expected def name");
+                return None;
+            }
         };
 
         let params = self.signature_params(ParamsContext::Squares);
         let span_end = self.position();
 
-        self.create_node(AstNode::Extern { name, params }, span_start, span_end)
+        Some(arena.alloc(Extern {
+            span_start,
+            span_end,
+            name,
+            params,
+        }))
     }
 
     // TODO: Deduplicate code between let/mut/const assignments
-    pub fn let_statement(&mut self) -> NodeId {
+    pub fn let_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Let<'a> {
         let _span = span!();
         let is_mutable = false;
         let span_start = self.position();
 
         self.keyword(b"let");
 
+        // TODO(bumpalo_rewrite): This becomes a reference to VarDecl type
         let variable_name = self.variable_decl();
 
-        let ty = if self.is_colon() {
+        let ty = self.is_colon().then(|| {
             // We have a type
             self.colon();
-
-            Some(self.typename())
-        } else {
-            None
-        };
+            self.typename()
+        });
 
         self.equals();
 
-        let initializer = self.pipeline_or_expression();
+        let initializer = self.pipeline_or_expression(arena);
 
-        let span_end = self.get_span_end(initializer);
+        let span_end = match initializer {
+            PipelineOrExprOrAssign::Pipeline(pipeline) => pipeline.span_end,
+            PipelineOrExprOrAssign::Expression(expr) => expr.get_span_end(),
+            PipelineOrExprOrAssign::Assignment(assignment) => assignment.span_end,
+        };
 
-        self.create_node(
-            AstNode::Let {
-                variable_name,
-                ty,
-                initializer,
-                is_mutable,
-            },
+        arena.alloc(Let {
             span_start,
             span_end,
-        )
+            variable_name,
+            ty,
+            initializer,
+            is_mutable,
+        })
     }
 
     // TODO: Deduplicate code between let/mut/const assignments
-    pub fn mut_statement(&mut self) -> NodeId {
+    pub fn mut_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Let<'a> {
         let _span = span!();
         let is_mutable = true;
         let span_start = self.position();
@@ -1528,20 +1917,18 @@ impl Parser {
 
         self.equals();
 
-        let initializer = self.pipeline_or_expression();
+        let initializer = self.pipeline_or_expression(arena);
 
-        let span_end = self.get_span_end(initializer);
+        let span_end = initializer.get_span_end();
 
-        self.create_node(
-            AstNode::Let {
-                variable_name,
-                ty,
-                initializer,
-                is_mutable,
-            },
+        arena.alloc(Let {
             span_start,
             span_end,
-        )
+            variable_name,
+            ty,
+            initializer,
+            is_mutable,
+        })
     }
 
     pub fn keyword(&mut self, keyword: &[u8]) {
@@ -1556,7 +1943,7 @@ impl Parser {
         }
     }
 
-    pub fn block(&mut self, context: BlockContext) -> NodeId {
+    pub fn block<'a>(&mut self, context: BlockContext, arena: &'a bumpalo::Bump) -> &'a Block<'a> {
         let _span = span!();
         let span_start = self.position();
 
@@ -1576,57 +1963,65 @@ impl Parser {
                 self.tokens.advance();
                 continue;
             } else if self.is_keyword(b"def") {
-                code_body.push(self.def_statement());
+                match self.def_statement(arena) {
+                    Some(def) => {
+                        code_body.push(BlockEntities::Def(def));
+                    }
+                    None => {}
+                };
             } else if self.is_keyword(b"let") {
-                code_body.push(self.let_statement());
+                code_body.push(BlockEntities::Let(self.let_statement(arena)));
             } else if self.is_keyword(b"mut") {
-                code_body.push(self.mut_statement());
+                code_body.push(BlockEntities::Let(self.mut_statement(arena)));
             } else if self.is_keyword(b"while") {
-                code_body.push(self.while_statement());
+                match self.while_statement(arena) {
+                    Some(while_) => {
+                        code_body.push(BlockEntities::While(while_));
+                    }
+                    None => {}
+                };
             } else if self.is_keyword(b"for") {
-                code_body.push(self.for_statement());
+                code_body.push(BlockEntities::For(self.for_statement(arena)));
             } else if self.is_keyword(b"loop") {
-                code_body.push(self.loop_statement());
+                code_body.push(BlockEntities::Loop(self.loop_statement(arena)));
             } else if self.is_keyword(b"return") {
-                code_body.push(self.return_statement());
+                code_body.push(BlockEntities::Return(self.return_statement(arena)));
             } else if self.is_keyword(b"continue") {
-                code_body.push(self.continue_statement());
+                code_body.push(BlockEntities::Continue(self.continue_statement(arena)));
             } else if self.is_keyword(b"break") {
-                code_body.push(self.break_statement());
+                code_body.push(BlockEntities::Break(self.break_statement(arena)));
             } else if self.is_keyword(b"alias") {
-                code_body.push(self.alias_statement());
+                code_body.push(BlockEntities::Alias(self.alias_statement(arena)));
             } else if self.is_keyword(b"extern") {
-                code_body.push(self.extern_statement());
+                match self.extern_statement(arena) {
+                    Some(extern_) => {
+                        code_body.push(BlockEntities::Extern(extern_));
+                    }
+                    None => {}
+                }
             } else {
-                let exp_span_start = self.position();
-                let pipeline = self.pipeline_or_expression_or_assignment();
-                let exp_span_end = self.get_span_end(pipeline);
+                let pipeline = self.pipeline_or_expression_or_assignment(arena);
 
                 if self.is_semicolon() {
                     // This is a statement, not an expression
                     self.tokens.advance();
-                    code_body.push(self.create_node(
-                        AstNode::Statement(pipeline),
-                        exp_span_start,
-                        exp_span_end,
-                    ))
+                    code_body.push(BlockEntities::Statement(pipeline));
                 } else {
-                    code_body.push(pipeline);
+                    code_body.push(BlockEntities::PipelineOrExprOrAssign(pipeline));
                 }
             }
         }
 
-        self.compiler.blocks.push(Block::new(code_body));
         let span_end = self.position();
 
-        self.create_node(
-            AstNode::Block(BlockId(self.compiler.blocks.len() - 1)),
+        arena.alloc(Block {
             span_start,
             span_end,
-        )
+            nodes: code_body,
+        })
     }
 
-    pub fn while_statement(&mut self) -> NodeId {
+    pub fn while_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> Option<&'a While<'a>> {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"while");
@@ -1635,16 +2030,22 @@ impl Parser {
             // TODO: flag parsing
             self.error("WIP: Flags on while are not supported yet");
             self.tokens.advance();
+            return None;
         }
 
-        let condition = self.expression();
-        let block = self.block(BlockContext::Curlies);
-        let span_end = self.get_span_end(block);
+        let condition = self.expression(arena);
+        let block = self.block(BlockContext::Curlies, arena);
+        let span_end = block.span_end;
 
-        self.create_node(AstNode::While { condition, block }, span_start, span_end)
+        Some(arena.alloc(While {
+            span_start,
+            span_end,
+            condition,
+            block,
+        }))
     }
 
-    pub fn for_statement(&mut self) -> NodeId {
+    pub fn for_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a For<'a> {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"for");
@@ -1652,32 +2053,34 @@ impl Parser {
         let variable = self.variable_decl();
         self.keyword(b"in");
 
-        let range = self.simple_expression(BarewordContext::String);
-        let block = self.block(BlockContext::Curlies);
-        let span_end = self.get_span_end(block);
+        let range = self.simple_expression(BarewordContext::String, arena);
+        let block = self.block(BlockContext::Curlies, arena);
+        let span_end = block.span_end;
 
-        self.create_node(
-            AstNode::For {
-                variable,
-                range,
-                block,
-            },
+        arena.alloc(For {
             span_start,
             span_end,
-        )
+            variable,
+            range,
+            block,
+        })
     }
 
-    pub fn loop_statement(&mut self) -> NodeId {
+    pub fn loop_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Loop<'a> {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"loop");
-        let block = self.block(BlockContext::Curlies);
-        let span_end = self.get_span_end(block);
+        let block = self.block(BlockContext::Curlies, arena);
+        let span_end = block.span_end;
 
-        self.create_node(AstNode::Loop { block }, span_start, span_end)
+        arena.alloc(Loop {
+            span_start,
+            span_end,
+            block,
+        })
     }
 
-    pub fn return_statement(&mut self) -> NodeId {
+    pub fn return_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Return<'a> {
         let _span = span!();
         let span_start = self.position();
         let span_end;
@@ -1685,36 +2088,49 @@ impl Parser {
         self.keyword(b"return");
 
         let ret_val = if self.is_expression() {
-            let expr = self.expression();
-            span_end = self.get_span_end(expr);
+            let expr = self.expression(arena);
+            span_end = expr.get_span_end();
             Some(expr)
         } else {
             span_end = span_start + b"return".len();
             None
         };
 
-        self.create_node(AstNode::Return(ret_val), span_start, span_end)
+        arena.alloc(Return {
+            span_start,
+            span_end,
+            ret_val,
+        })
+        // self.create_node(AstNode::Return(ret_val), span_start, span_end)
     }
 
-    pub fn continue_statement(&mut self) -> NodeId {
+    pub fn continue_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Continue {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"continue");
         let span_end = span_start + b"continue".len();
 
-        self.create_node(AstNode::Continue, span_start, span_end)
+        arena.alloc(Continue {
+            span_start,
+            span_end,
+        })
+        // self.create_node(AstNode::Continue, span_start, span_end)
     }
 
-    pub fn break_statement(&mut self) -> NodeId {
+    pub fn break_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Break {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"break");
         let span_end = span_start + b"break".len();
 
-        self.create_node(AstNode::Break, span_start, span_end)
+        arena.alloc(Break {
+            span_start,
+            span_end,
+        })
+        // self.create_node(AstNode::Break, span_start, span_end)
     }
 
-    pub fn alias_statement(&mut self) -> NodeId {
+    pub fn alias_statement<'a>(&mut self, arena: &'a bumpalo::Bump) -> &'a Alias {
         let _span = span!();
         let span_start = self.position();
         self.keyword(b"alias");
@@ -1729,8 +2145,16 @@ impl Parser {
         } else {
             self.name()
         };
+        // TODO: Get span from the type itself
         let span_end = self.get_span_end(old_name);
-        self.create_node(AstNode::Alias { new_name, old_name }, span_start, span_end)
+
+        arena.alloc(Alias {
+            span_start,
+            span_end,
+            new_name,
+            old_name,
+        })
+        // self.create_node(AstNode::Alias { new_name, old_name }, span_start, span_end)
     }
 
     pub fn is_operator(&mut self) -> bool {
@@ -1806,51 +2230,51 @@ impl Parser {
         self.tokens.peek_token() == Token::GreaterThan
     }
 
-    pub fn is_pipe(&mut self) -> bool {
+    pub fn is_pipe(&self) -> bool {
         self.tokens.peek_token() == Token::Pipe
     }
 
-    pub fn is_dollar(&mut self) -> bool {
+    pub fn is_dollar(&self) -> bool {
         self.tokens.peek_token() == Token::Dollar
     }
 
-    pub fn is_comment(&mut self) -> bool {
+    pub fn is_comment(&self) -> bool {
         self.tokens.peek_token() == Token::Comment
     }
 
-    pub fn is_question_mark(&mut self) -> bool {
+    pub fn is_question_mark(&self) -> bool {
         self.tokens.peek_token() == Token::QuestionMark
     }
 
-    pub fn is_thin_arrow(&mut self) -> bool {
+    pub fn is_thin_arrow(&self) -> bool {
         self.tokens.peek_token() == Token::ThinArrow
     }
 
-    pub fn is_thick_arrow(&mut self) -> bool {
+    pub fn is_thick_arrow(&self) -> bool {
         self.tokens.peek_token() == Token::ThickArrow
     }
 
-    pub fn is_colon(&mut self) -> bool {
+    pub fn is_colon(&self) -> bool {
         self.tokens.peek_token() == Token::Colon
     }
 
-    pub fn is_newline(&mut self) -> bool {
+    pub fn is_newline(&self) -> bool {
         self.tokens.peek_token() == Token::Newline
     }
 
-    pub fn is_semicolon(&mut self) -> bool {
+    pub fn is_semicolon(&self) -> bool {
         self.tokens.peek_token() == Token::Semicolon
     }
 
-    pub fn is_dot(&mut self) -> bool {
+    pub fn is_dot(&self) -> bool {
         self.tokens.peek_token() == Token::Dot
     }
 
-    pub fn is_dotdot(&mut self) -> bool {
+    pub fn is_dotdot(&self) -> bool {
         self.tokens.peek_token() == Token::DotDot
     }
 
-    pub fn is_coloncolon(&mut self) -> bool {
+    pub fn is_coloncolon(&self) -> bool {
         self.tokens.peek_token() == Token::ColonColon
     }
 
@@ -1912,6 +2336,7 @@ impl Parser {
             || self.is_name()
     }
 
+    // TODO(bumpalo_rewrite)
     pub fn error_on_node(&mut self, message: impl Into<String>, node_id: NodeId) {
         self.compiler.errors.push(SourceError {
             message: message.into(),

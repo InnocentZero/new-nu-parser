@@ -9,6 +9,7 @@ edition = "2021"
 tracy-client = { version = "0.17.3", default-features = false } # for tracy v0.11.1
 logos = "0.15"
 nu-protocol = "0.101"
+bumpalo = "3.20.3"
 
 [profile.profiling]
 inherits = "release"

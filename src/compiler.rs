@@ -50,14 +50,16 @@ impl<T> Spanned<T> {
     }
 }
 
-#[derive(Clone)]
+// #[derive(Clone)]
+// TODO(bumpalo_rewrite): Do we need clone? Where and why are we cloning it?
 pub struct Compiler {
     // Core information, indexed by NodeId:
+    // pub ast: Option<Block<'a>>,
     pub spans: Vec<Span>,
     pub ast_nodes: Vec<AstNode>,
     pub node_types: Vec<TypeId>,
     // node_lifetimes: Vec<AllocationLifetime>,
-    pub blocks: Vec<Block>,            // Blocks, indexed by BlockId
+    // pub blocks: Vec<Block>,            // Blocks, indexed by BlockId
     pub params: Vec<Params>,           // Params, indexed by ParamsId
     pub in_out_types: Vec<InOutTypes>, // InOutTypes, indexed by InOutTypesId
     pub calls: Vec<Call>,              // Calls, indexed by CallId
@@ -110,6 +112,7 @@ impl Default for Compiler {
 impl Compiler {
     pub fn new() -> Self {
         Self {
+            arena: bumpalo::Bump::new(),
             spans: vec![],
             ast_nodes: vec![],
             node_types: vec![],
